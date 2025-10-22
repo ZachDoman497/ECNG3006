@@ -2,17 +2,51 @@
 //816036290
 
 #include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
-#include "esp_system.h"
-#include "esp_spi_flash.h"
-#include "esp_timer.h"
 
 #include "driver/gpio.h"
+#include "driver/hw_timer.h"
+#include "driver/uart.h"
+
+#include "esp_system.h"
+#include "esp_spi_flash.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+
+#define     LED_PIN         2
+#define     UART_NUM        UART_NUM_0
+
+#define     TASK1PRIO       1
+#define     TASK2PRIO       1
+#define     TASK3PRIO       1
+
 
 SemaphoreHandle_t xMutex;
+volatile bool   ledOn;
+
+void uart_init(void)
+{
+    uart_config_t uart_config = {
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
+    };
+    
+    uart_param_config(UART_NUM, &uart_config);
+    uart_driver_install(UART_NUM, 0, 128, 0, NULL, 0);
+}
+
+static void uart_send_string(const char* str)
+{
+    uart_write_bytes(UART_NUM, str, strlen(str));
+}
 
 // Create an example C application for your platform with three FreeRTOS tasks, and a FreeRTOS mutex and adjust the configuration file appropriately:
 
@@ -28,6 +62,8 @@ void vTask1 ( void *arg )
 
     //works for active high aka when the led is tied to the esp and resitor to gnd
     gpio_set_level(GPIO_NUM_2, 1);// Setting GPIO pin 15 high
+    ledOn = true;
+    
     //active wait for 0.5s
     int64_t xStart= esp_timer_get_time();
     while(esp_timer_get_time()<=(xStart+500000))
@@ -49,7 +85,9 @@ void vTask2 ( void *arg )
 
     //works for active high
     gpio_set_level(GPIO_NUM_2, 0);// Setting GPIO pin 15 low
-    vTaskDelay(1000 / portTICK_RATE_MS); //1s ; places task2 in the blocked state
+    ledOn = false;
+
+    vTaskDelay(pdMS_TO_TICKS(1000)); //1s ; places task2 in the blocked state
 
     xSemaphoreGive(xMutex);
 
@@ -59,33 +97,36 @@ void vTask2 ( void *arg )
 //Will print a status message via the serial UART, and task-delay for 1 second. 
 void vTask3 ( void *arg )
 {
-    printf("task3 is running"); //status message??
-    vTaskDelay(1000 / portTICK_RATE_MS); 
+    uart_send_string("task3 is running"); //status message
+    vTaskDelay(pdMS_TO_TICKS(1000));
 
     vTaskDelete( NULL );
+}
+
+void gpio_init_led(void)
+{
+    gpio_config_t io_conf = {
+        .pin_bit_mask     = (1ULL << LED_PIN),      //bit masking to set GPIO pin 15 as an output
+        .mode             = GPIO_MODE_OUTPUT,       //setting as output mode
+        .pull_up_en       = GPIO_PULLUP_DISABLE,    //disabling pull-up mode
+        .pull_down_en     = GPIO_PULLDOWN_DISABLE,  //disabling pull-down mode
+        .intr_type        = GPIO_INTR_DISABLE
+    };
+    gpio_config(&io_conf);      //to apply the configuration
+    gpio_set_level(LED_PIN, 0);  // Start with LED off
 }
 
 
 void app_main()
 {
+    gpio_init_led();
+    uart_init();
 
-    xMutex= xSemaphoreCreateMutex();
-    if (xMutex!=NULL)
+    xMutex = xSemaphoreCreateMutex();
+    if (xMutex != NULL)
     {
-        xTaskCreate(vTask1, "task1", 1000, NULL, 1, NULL );
-        xTaskCreate(vTask2, "task2", 1000, NULL, 1, NULL );
-        xTaskCreate(vTask3, "task3", 1000, NULL, 1, NULL ); 
-        //Start the scheduler so the tasks start executing.
-        vTaskStartScheduler();
+        xTaskCreate(vTask1, "task1", 1000, NULL, TASK1PRIO, NULL );
+        xTaskCreate(vTask2, "task2", 1000, NULL, TASK2PRIO, NULL );
+        xTaskCreate(vTask3, "task3", 1000, NULL, TASK3PRIO, NULL ); 
     }
-
-    gpio_config_t io_conf; //to start configuring the pins
-    io_conf.mode = GPIO_MODE_OUTPUT; //setting as output mode
-    io_conf.pin_bit_mask = (1ULL<<2); //bit masking to set GPIO pin 15 as an output
-    io_conf.pull_down_en = 0; //disabling pull-down mode
-    io_conf.pull_up_en = 0; //disable pull-up mode
-    gpio_config(&io_conf); //to apply the configuration
-
-   return;
-
 }
