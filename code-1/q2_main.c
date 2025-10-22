@@ -97,7 +97,13 @@ void vTask2 ( void *arg )
 //Will print a status message via the serial UART, and task-delay for 1 second. 
 void vTask3 ( void *arg )
 {
-    uart_send_string("task3 is running"); //status message
+    if(ledOn == true){
+        uart_send_string("LED is on"); //status message
+    }
+    else{
+        uart_send_string("LED is off"); //status message
+    }
+    
     vTaskDelay(pdMS_TO_TICKS(1000));
 
     vTaskDelete( NULL );
