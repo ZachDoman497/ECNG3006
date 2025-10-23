@@ -1,5 +1,5 @@
-//Kiara Creed
-//816036290
+// Kiara Creed
+// 816036290
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -10,145 +10,136 @@
 #include "freertos/semphr.h"
 
 #include "driver/gpio.h"
-#include "driver/hw_timer.h"
 #include "driver/uart.h"
-
 #include "esp_system.h"
-#include "esp_spi_flash.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 
-#define     LED_PIN         2
-#define     UART_NUM        UART_NUM_0
+#define LED_PIN     2
+#define UART_NUM    UART_NUM_0
 
-#define     TASK1PRIO       3
-#define     TASK2PRIO       2
-#define     TASK3PRIO       1
+#define TASK1PRIO   3
+#define TASK2PRIO   2
+#define TASK3PRIO   1
 
 SemaphoreHandle_t xMutex;
-volatile bool   ledOn;
+volatile bool ledOn;
 
-static const char *TAG="APP";
-esp_log_level_set(TAG,ESP_LOG_INFO);
-
-// Create an example C application for your platform with three FreeRTOS tasks, and a FreeRTOS mutex and adjust the configuration file appropriately:
-
-// Task1 and task2 share a single GPIO pin connected to an LED. 
-// The GPIO pin should be managed using a mutex. 
-// Each task should have it's own priority level determined by a const int.
-
-void uart_init(void)
-{
-    uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
-    };
-    
-    uart_param_config(UART_NUM, &uart_config);
-    uart_driver_install(UART_NUM, 256, 0, 0, NULL, 0);
-}
-
-static void uart_send_string(const char* str)
-{
-    uart_write_bytes(UART_NUM, str, strlen(str));
-}
-
-//Shares a GPIO pin with task2
-//Will turn the GPIO pin on, and actively wait for 0.5 seconds, before yielding. 
-void vTask1 ( void *arg )
-{
-    ESP_LOGI(TAG, "starting task1");
-    for(;;){
-    ESP_LOGI(TAG, "Entered Task1");
-    xSemaphoreTake(xMutex, portMAX_DELAY);
-    //works for active high aka when the led is tied to the esp and resitor to gnd
-    gpio_set_level(GPIO_NUM_2, 1);// Setting GPIO pin 15 high
-    ledOn = true;
-    
-    //active wait for 0.5s
-    int64_t xStart = esp_timer_get_time();
-    ESP_LOGI(TAG, "starting busywait, start time = %u\n", (uint32_t)xStart);
-    while(esp_timer_get_time()<=(xStart+500000))
-    {
-
-    }
-    ESP_LOGI(TAG, "finished busywait, exit time = %u\n", (uint32_t) esp_timer_get_time());
-
-    //yield
-    xSemaphoreGive(xMutex);
-    vTaskDelay(pdMS_TO_TICKS(10));
-    }
-    vTaskDelete( NULL ); //allows tasks to exit cleanly
-}
-
-// Shares a single GPIO pin with task1
-// Will turn the GPIO pin off, and task-delay for 1 second. 
-void vTask2 ( void *arg )
-{
-    for(;;){
-    ESP_LOGI(TAG, "Entered Task2");
-    xSemaphoreTake(xMutex, portMAX_DELAY);
-        //works for active high
-    gpio_set_level(GPIO_NUM_2, 0);// Setting GPIO pin 15 low
-    ledOn = false;
-
-    vTaskDelay(pdMS_TO_TICKS(1000)); //1s ; places task2 in the blocked state
-
-    xSemaphoreGive(xMutex);
-    vTaskDelay(pdMS_TO_TICKS(10));
-
-    }
-    vTaskDelete( NULL );
-}
-
-//Will print a status message via the serial UART, and task-delay for 1 second. 
-void vTask3 ( void *arg )
-{
-    for(;;){
-    ESP_LOGI(TAG, "Entered Task3");
-    if(ledOn == true){
-        uart_send_string("LED is on\n"); //status message
-    }
-    else{
-        uart_send_string("LED is off\n"); //status message
-    }
-    
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    }   
-    vTaskDelete( NULL );
-}
-
+static const char *TAG = "APP";
 
 void gpio_init_led(void)
 {
     gpio_config_t io_conf = {
-        .pin_bit_mask     = (1ULL << LED_PIN),      //bit masking to set GPIO pin 15 as an output
-        .mode             = GPIO_MODE_OUTPUT,       //setting as output mode
-        .pull_up_en       = GPIO_PULLUP_DISABLE,    //disabling pull-up mode
-        .pull_down_en     = GPIO_PULLDOWN_DISABLE,  //disabling pull-down mode
-        .intr_type        = GPIO_INTR_DISABLE
+        .pin_bit_mask = (1ULL << LED_PIN),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
     };
-    gpio_config(&io_conf);      //to apply the configuration
-    gpio_set_level(LED_PIN, 0);  // Start with LED off
+    gpio_config(&io_conf);
+    gpio_set_level(LED_PIN, 0);
 }
 
+
+// Task 1: Turns LED ON and busy-waits for 0.5s
+void vTask1(void *arg)
+{
+    TaskHandle_t taskHandle = xTaskGetCurrentTaskHandle();
+    ESP_LOGI(TAG, "[%p] Task1 STARTED (Priority %d)", taskHandle, uxTaskPriorityGet(NULL));
+
+        ESP_LOGI(TAG, "[%p] Entered Task1 loop", taskHandle);
+
+        ESP_LOGI(TAG, "[%p] Task1 trying to take mutex...", taskHandle);
+        xSemaphoreTake(xMutex, portMAX_DELAY);
+        ESP_LOGI(TAG, "[%p] Task1 ACQUIRED mutex", taskHandle);
+
+        gpio_set_level(GPIO_NUM_2, 1);
+        ledOn = true;
+        ESP_LOGI(TAG, "[%p] LED turned ON", taskHandle);
+
+        int64_t xStart = esp_timer_get_time();
+        ESP_LOGI(TAG, "[%p] Busy-wait start @ %u µs", taskHandle, (uint32_t)xStart);
+
+        while (esp_timer_get_time() <= (xStart + 500000)) {
+            // simulate CPU load
+        }
+
+        int64_t xEnd = esp_timer_get_time();
+        ESP_LOGI(TAG, "[%p] Busy-wait done @ %u µs (duration: %u µs)", taskHandle, (uint32_t)xEnd, (uint32_t)(xEnd - xStart));
+
+        xSemaphoreGive(xMutex);
+        ESP_LOGI(TAG, "[%p] Task1 RELEASED mutex", taskHandle);
+
+        ESP_LOGI(TAG, "[%p] Task1 delaying 10ms", taskHandle);
+        vTaskDelay(pdMS_TO_TICKS(10));
+
+    vTaskDelete(NULL);
+}
+
+// Task 2: Turns LED OFF and delays 1s
+void vTask2(void *arg)
+{
+    TaskHandle_t taskHandle = xTaskGetCurrentTaskHandle();
+    ESP_LOGI(TAG, "\n\n[%p] Task2 STARTED (Priority %d)", taskHandle, uxTaskPriorityGet(NULL));
+
+        ESP_LOGI(TAG, "[%p] Entered Task2 loop", taskHandle);
+
+        ESP_LOGI(TAG, "[%p] Task2 trying to take mutex...", taskHandle);
+        xSemaphoreTake(xMutex, portMAX_DELAY);
+        ESP_LOGI(TAG, "[%p] Task2 ACQUIRED mutex", taskHandle);
+
+        gpio_set_level(GPIO_NUM_2, 0);
+        ledOn = false;
+        ESP_LOGI(TAG, "[%p] LED turned OFF", taskHandle);
+
+        ESP_LOGI(TAG, "[%p] Task2 delaying 1s while holding mutex", taskHandle);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+
+        xSemaphoreGive(xMutex);
+        ESP_LOGI(TAG, "[%p] Task2 RELEASED mutex", taskHandle);
+
+        ESP_LOGI(TAG, "[%p] Task2 delaying 10ms (post-release)", taskHandle);
+        vTaskDelay(pdMS_TO_TICKS(10));
+
+    vTaskDelete(NULL);
+}
+
+// Task 3: Reports LED state
+void vTask3(void *arg)
+{
+    TaskHandle_t taskHandle = xTaskGetCurrentTaskHandle();
+    ESP_LOGI(TAG, "\n\n[%p] Task3 STARTED (Priority %d)", taskHandle, uxTaskPriorityGet(NULL));
+
+        ESP_LOGI(TAG, "[%p] Entered Task3 loop", taskHandle);
+
+        if (ledOn) {
+            ESP_LOGI(TAG, "[%p] UART: LED is ON", taskHandle);
+        } else {
+            ESP_LOGI(TAG, "[%p] UART: LED is OFF", taskHandle);
+        }
+
+        ESP_LOGI(TAG, "[%p] Task3 delaying 1s", taskHandle);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+
+    vTaskDelete(NULL);
+}
 
 void app_main()
 {
     gpio_init_led();
-    uart_init();
 
     xMutex = xSemaphoreCreateMutex();
     if (xMutex != NULL)
     {
-        xTaskCreate(vTask1, "task1", 1000, NULL, TASK1PRIO, NULL );
-        xTaskCreate(vTask2, "task2", 1000, NULL, TASK2PRIO, NULL );
+        ESP_LOGI(TAG, "Mutex created successfully");
+        xTaskCreate(vTask1, "task1", 2048, NULL, TASK1PRIO, NULL);
+        xTaskCreate(vTask2, "task2", 2048, NULL, TASK2PRIO, NULL);
+    }
+    else
+    {
+        ESP_LOGE(TAG, "Mutex creation FAILED");
     }
 
-    xTaskCreate(vTask3, "task3", 1000, NULL, TASK3PRIO, NULL ); 
-    //xTaskCreate(vTask4, "task4", 1000, NULL, 3, NULL);
+    xTaskCreate(vTask3, "task3", 2048, NULL, TASK3PRIO, NULL);
+    ESP_LOGI(TAG, "All tasks created successfully");
 }
-
