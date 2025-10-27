@@ -18,11 +18,11 @@
 #define LED_PIN     2
 #define UART_NUM    UART_NUM_0
 
-#define TASK1PRIO   3
-#define TASK2PRIO   2
+#define TASK1PRIO   1
+#define TASK2PRIO   1
 #define TASK3PRIO   1
 
-SemaphoreHandle_t xMutex;
+SemaphoreHandle_t xSemaphore;
 volatile bool ledOn;
 
 static const char *TAG = "APP";
@@ -49,9 +49,9 @@ void vTask1(void *arg)
 
         ESP_LOGI(TAG, "[%p] Entered Task1 loop", taskHandle);
 
-        ESP_LOGI(TAG, "[%p] Task1 trying to take mutex...", taskHandle);
-        xSemaphoreTake(xMutex, portMAX_DELAY);
-        ESP_LOGI(TAG, "[%p] Task1 ACQUIRED mutex", taskHandle);
+        ESP_LOGI(TAG, "[%p] Task1 trying to take semaphore...", taskHandle);
+        xSemaphoreTake(xSemaphore, portMAX_DELAY);
+        ESP_LOGI(TAG, "[%p] Task1 ACQUIRED semaphore", taskHandle);
 
         gpio_set_level(GPIO_NUM_2, 1);
         ledOn = true;
@@ -67,8 +67,8 @@ void vTask1(void *arg)
         int64_t xEnd = esp_timer_get_time();
         ESP_LOGI(TAG, "[%p] Busy-wait done @ %u µs (duration: %u µs)", taskHandle, (uint32_t)xEnd, (uint32_t)(xEnd - xStart));
 
-        xSemaphoreGive(xMutex);
-        ESP_LOGI(TAG, "[%p] Task1 RELEASED mutex", taskHandle);
+        xSemaphoreGive(xSemaphore);
+        ESP_LOGI(TAG, "[%p] Task1 RELEASED semaphore", taskHandle);
 
         ESP_LOGI(TAG, "[%p] Task1 delaying 10ms", taskHandle);
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -84,19 +84,19 @@ void vTask2(void *arg)
 
         ESP_LOGI(TAG, "[%p] Entered Task2 loop", taskHandle);
 
-        ESP_LOGI(TAG, "[%p] Task2 trying to take mutex...", taskHandle);
-        xSemaphoreTake(xMutex, portMAX_DELAY);
-        ESP_LOGI(TAG, "[%p] Task2 ACQUIRED mutex", taskHandle);
+        ESP_LOGI(TAG, "[%p] Task2 trying to take semaphore...", taskHandle);
+        xSemaphoreTake(xSemaphore, portMAX_DELAY);
+        ESP_LOGI(TAG, "[%p] Task2 ACQUIRED semaphore", taskHandle);
 
         gpio_set_level(GPIO_NUM_2, 0);
         ledOn = false;
         ESP_LOGI(TAG, "[%p] LED turned OFF", taskHandle);
 
-        ESP_LOGI(TAG, "[%p] Task2 delaying 1s while holding mutex", taskHandle);
+        ESP_LOGI(TAG, "[%p] Task2 delaying 1s while holding semaphore", taskHandle);
         vTaskDelay(pdMS_TO_TICKS(1000));
 
-        xSemaphoreGive(xMutex);
-        ESP_LOGI(TAG, "[%p] Task2 RELEASED mutex", taskHandle);
+        xSemaphoreGive(xSemaphore);
+        ESP_LOGI(TAG, "[%p] Task2 RELEASED semaphore", taskHandle);
 
         ESP_LOGI(TAG, "[%p] Task2 delaying 10ms (post-release)", taskHandle);
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -128,17 +128,18 @@ void app_main()
 {
     gpio_init_led();
 
-    xMutex = xSemaphoreCreateMutex();
-    if (xMutex != NULL)
+    xSemaphore = xSemaphoreCreateBinary();
+    if (xSemaphore != NULL)
     {
-        ESP_LOGI(TAG, "Mutex created successfully");
+        xSemaphoreGive(xSemaphore);
+        ESP_LOGI(TAG, "Binary Semaphore created successfully");
         xTaskCreate(vTask1, "task1", 2048, NULL, TASK1PRIO, NULL);
         xTaskCreate(vTask2, "task2", 2048, NULL, TASK2PRIO, NULL);
         xTaskCreate(vTask3, "task3", 2048, NULL, TASK3PRIO, NULL);
     }
     else
     {
-        ESP_LOGE(TAG, "Mutex creation FAILED");
+        ESP_LOGE(TAG, "semaphore creation FAILED");
     }
 
     ESP_LOGI(TAG, "All tasks created successfully");
