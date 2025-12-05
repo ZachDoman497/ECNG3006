@@ -105,7 +105,7 @@ void app_main()
 
         ESP_LOGI(TAG, "Read from file: ");
     
-        for (int n=0;n<MAX_LEN;n++)
+        for (int n=0;n<MAX_LIN;n++)
         {
             ESP_LOGI(TAG, "%s", data[n]);
         }
